@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -11,13 +12,21 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	_ "github.com/lib/pq"
 )
 
 type Config struct {
-	ServerHost string `json:"server_host"`
-	ServerPort string `json:"server_port"`
-	FileDir    string `json:"file_dir"`
-	UserFile   string `json:"user_file"`
+	ServerHost  string `json:"server_host"`
+	ServerPort  string `json:"server_port"`
+	FileDir     string `json:"file_dir"`
+	UserFile    string `json:"user_file"`
+	StorageMode string `json:"storage_mode"`
+	DBHost      string `json:"db_host"`
+	DBPort      string `json:"db_port"`
+	DBUser      string `json:"db_user"`
+	DBPassword  string `json:"db_password"`
+	DBName      string `json:"db_name"`
 }
 
 type User struct {
@@ -25,16 +34,86 @@ type User struct {
 	Password string `json:"password"`
 }
 
-type UserStore struct {
-	mu    sync.RWMutex
-	Users []User `json:"users"`
+type UserStore interface {
+	LoadUsers() error
+	ValidateCredentials(username, password string) bool
 }
+
+type JSONUserStore struct {
+	Users []User `json:"users"`
+	mu    sync.RWMutex
+}
+
+type PostgresUserStore struct{}
 
 var (
 	config    Config
 	userStore UserStore
 	templates = template.Must(template.ParseFiles("templates/main.html"))
+	db        *sql.DB
 )
+
+func initPostgres() {
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		config.DBHost, config.DBPort, config.DBUser, config.DBPassword, config.DBName)
+
+	var err error
+	db, err = sql.Open("postgres", dsn)
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		log.Fatalf("PostgreSQL connection failed: %v", err)
+	}
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		id SERIAL PRIMARY KEY,
+		username VARCHAR(255) UNIQUE NOT NULL,
+		password VARCHAR(255) NOT NULL
+	)`)
+	if err != nil {
+		log.Fatalf("Failed to create users table: %v", err)
+	}
+}
+
+func (store *JSONUserStore) LoadUsers() error {
+	file, err := os.Open(config.UserFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	return json.NewDecoder(file).Decode(&store)
+}
+
+func (store *JSONUserStore) ValidateCredentials(username, password string) bool {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	for _, user := range store.Users {
+		if user.Username == username && user.Password == password {
+			return true
+		}
+	}
+	return false
+}
+
+func (store *PostgresUserStore) LoadUsers() error {
+	return nil
+}
+
+func (store *PostgresUserStore) ValidateCredentials(username, password string) bool {
+	var dbPassword string
+	err := db.QueryRow("SELECT password FROM users WHERE username = $1", username).Scan(&dbPassword)
+	if err != nil {
+		return false
+	}
+	return dbPassword == password
+}
 
 func main() {
 	// Load config
@@ -49,7 +128,19 @@ func main() {
 	}
 
 	// Load users from file
-	loadUsers()
+	switch config.StorageMode {
+	case "json":
+		jsonStore := &JSONUserStore{}
+		if err := jsonStore.LoadUsers(); err != nil {
+			log.Fatalf("Failed to load users from JSON: %v", err)
+		}
+		userStore = jsonStore
+	case "postgresql":
+		initPostgres()
+		userStore = &PostgresUserStore{}
+	default:
+		log.Fatalf("Invalid storage mode: %s", config.StorageMode)
+	}
 
 	// Ensure file directory exists
 	if _, err := os.Stat(config.FileDir); os.IsNotExist(err) {
@@ -88,19 +179,6 @@ func loadUsers() {
 	}
 }
 
-// Validate credentials
-func validateCredentials(username, password string) bool {
-	userStore.mu.RLock()
-	defer userStore.mu.RUnlock()
-
-	for _, user := range userStore.Users {
-		if user.Username == username && user.Password == password {
-			return true
-		}
-	}
-	return false
-}
-
 // Authentication middleware
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +190,7 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		authParts := strings.Split(cookie.Value, ":")
-		if len(authParts) != 2 || !validateCredentials(authParts[0], authParts[1]) {
+		if len(authParts) != 2 || !userStore.ValidateCredentials(authParts[0], authParts[1]) {
 			log.Printf("Invalid cookie or credentials: %v", r.RemoteAddr)
 			http.Redirect(w, r, "/", http.StatusFound)
 			return
@@ -129,7 +207,7 @@ func mainPageHandler(w http.ResponseWriter, r *http.Request) {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 
-		if validateCredentials(username, password) {
+		if userStore.ValidateCredentials(username, password) {
 			// Установка cookie
 			http.SetCookie(w, &http.Cookie{
 				Name:  "auth",
@@ -153,7 +231,7 @@ func mainPageHandler(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		authParts := strings.Split(cookie.Value, ":")
 		if len(authParts) == 2 {
-			isAuthorized = validateCredentials(authParts[0], authParts[1])
+			isAuthorized = userStore.ValidateCredentials(authParts[0], authParts[1])
 		}
 	}
 
