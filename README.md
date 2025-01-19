@@ -1,10 +1,9 @@
-### Итоговый файл `README.md`
 
 ---
 
 #### **На русском языке**
 
-# File Management Server
+# fileserverSQL
 
 Простой сервер для загрузки, скачивания, удаления и управления файлами через веб-интерфейс. Сервер поддерживает авторизацию, может хранить данные пользователей в формате JSON или в базе данных PostgreSQL. Выбор хранилища настраивается в конфигурационном файле.
 
@@ -82,8 +81,8 @@
 ### Шаг 2: Настройка проекта
 1. Клонируйте репозиторий:
    ```bash
-   git clone https://github.com/your-repo/file-management-server.git
-   cd file-management-server
+   git clone https://github.com/LinarProd/fileserverSQL.git
+   cd fileserverSQL
    ```
 
 2. Настройте файл `config.json`:
@@ -160,7 +159,7 @@ go run main.go
 
 #### **In English**
 
-# File Management Server
+# fileserverSQL
 
 A simple server for uploading, downloading, deleting, and managing files through a web interface. The server supports user authentication and allows storing user data in JSON or PostgreSQL, configurable via a settings file.
 
@@ -231,7 +230,7 @@ A simple server for uploading, downloading, deleting, and managing files through
 ### Step 2: Project Setup
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-repo/file-management-server.git
+   git clone https://github.com/LinarProd/fileserverSQL.git
    cd file-management-server
    ```
 
