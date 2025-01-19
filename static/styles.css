@@ -1,0 +1,120 @@
+/* Общие стили для тела страницы */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f9;
+    color: #333;
+    line-height: 1.6;
+}
+
+/* Стили для заголовков */
+h1 {
+    text-align: center;
+    margin: 20px 0;
+    color: #444;
+}
+
+h2 {
+    text-align: center;
+    margin: 20px 0;
+    color: #444;
+}
+
+/* Центрирование и стилизация формы */
+form {
+    max-width: 400px;
+    margin: 20px auto;
+    padding: 15px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Стили для меток и полей ввода */
+form label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+form input[type="text"],
+form input[type="password"],
+form input[type="file"] {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+/* Стили для кнопок */
+form button {
+    display: inline-block;
+    width: 100%;
+    padding: 10px;
+    background-color: #007bff;
+    border: none;
+    color: white;
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+form button:hover {
+    background-color: #0056b3;
+}
+
+/* Стили списка файлов */
+ul {
+    max-width: 600px;
+    margin: 20px auto;
+    padding: 0;
+    list-style: none;
+}
+
+ul li {
+    background: #fff;
+    margin: 10px 0;
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Ссылки на файлы */
+ul li a {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: bold;
+    margin-right: 15px;
+}
+
+ul li a:hover {
+    text-decoration: underline;
+}
+
+/* Стили кнопок внутри списка */
+ul li form button {
+    width: auto;
+    padding: 5px 10px;
+    font-size: 14px;
+    background-color: #dc3545;
+}
+
+ul li form button:hover {
+    background-color: #a71d2a;
+}
+
+/* Стили для сообщений об ошибке */
+.error {
+    color: #dc3545;
+    font-weight: bold;
+    text-align: center;
+    margin-top: 20px;
+}
