@@ -59,8 +59,10 @@ type PostgresUserStore struct{}
 var (
 	config    Config
 	userStore UserStore
-	templates = template.Must(template.ParseFiles("templates/main.html"))
-	db        *sql.DB
+	templates = template.Must(template.New("main.html").Funcs(template.FuncMap{
+		"lower": strings.ToLower,
+	}).ParseFiles("templates/main.html"))
+	db *sql.DB
 )
 
 func initPostgres() {
@@ -198,12 +200,14 @@ func main() {
 
 	// HTTP routes
 	http.HandleFunc("/", mainPageHandler)
-	http.HandleFunc("/upload", authMiddleware(uploadHandler))
-	http.HandleFunc("/files", authMiddleware(filesHandler))
-	http.HandleFunc("/delete", authMiddleware(deleteHandler))
-	http.HandleFunc("/download", authMiddleware(downloadHandler))
+	http.HandleFunc("/upload", uploadHandler)
+	http.HandleFunc("/files", filesHandler)
+	http.HandleFunc("/delete", deleteHandler)
+	http.HandleFunc("/download", downloadHandler)
 	http.HandleFunc("/logout", logoutHandler)
 	http.HandleFunc("/register", registerHandler)
+	http.HandleFunc("/openFile", openFileHandler)
+	http.HandleFunc("/saveFile", saveFileHandler)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	// Start server
@@ -211,41 +215,6 @@ func main() {
 	log.Printf("Starting server on %s", address)
 	if err := http.ListenAndServe(address, nil); err != nil {
 		log.Fatalf("Server failed: %v", err)
-	}
-}
-
-// Load users from JSON file
-func loadUsers() {
-	file, err := os.Open(config.UserFile)
-	if err != nil {
-		log.Fatalf("Failed to open user file: %v", err)
-	}
-	defer file.Close()
-
-	if err := json.NewDecoder(file).Decode(&userStore); err != nil {
-		log.Fatalf("Failed to parse user file: %v", err)
-	}
-}
-
-// Authentication middleware
-func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("auth")
-		if err != nil {
-			log.Printf("Unauthorized access attempt: %v", r.RemoteAddr)
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
-
-		authParts := strings.Split(cookie.Value, ":")
-		if len(authParts) != 2 || !userStore.ValidateCredentials(authParts[0], authParts[1]) {
-			log.Printf("Invalid cookie or credentials: %v", r.RemoteAddr)
-			http.Redirect(w, r, "/", http.StatusFound)
-			return
-		}
-
-		// Pass to the next handler if authorized
-		next(w, r)
 	}
 }
 
@@ -568,6 +537,7 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		Path:   "/",
 		MaxAge: -1,
 	})
+
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -599,4 +569,144 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// Добавим новый обработчик для открытия файла
+func openFileHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fileName := r.URL.Query().Get("filename")
+	filePath := filepath.Join(config.FileDir, fileName)
+
+	// Проверяем права доступа
+	cookie, _ := r.Cookie("auth")
+	username := strings.Split(cookie.Value, ":")[0]
+
+	fileInfos, err := getFileInfos()
+	if err != nil {
+		http.Error(w, "Failed to get file info", http.StatusInternalServerError)
+		return
+	}
+
+	var isOwner bool
+	var isAdmin bool
+
+	for _, user := range userStore.(*JSONUserStore).Users {
+		if user.Username == username {
+			isAdmin = user.IsAdmin
+			break
+		}
+	}
+
+	for _, info := range fileInfos {
+		if info.Name == fileName {
+			isOwner = info.Owner == username
+			break
+		}
+	}
+
+	if !isOwner && !isAdmin {
+		http.Error(w, "Permission denied", http.StatusForbidden)
+		return
+	}
+
+	// Читаем содержимое файла
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		http.Error(w, "Failed to read file", http.StatusInternalServerError)
+		return
+	}
+
+	// Проверяем ограничения
+	lines := strings.Split(string(content), "\n")
+	if len(lines) > 4294967296 {
+		http.Error(w, "File has too many lines", http.StatusBadRequest)
+		return
+	}
+
+	for _, line := range lines {
+		if len(line) > 4294967296 {
+			http.Error(w, "File contains lines that are too long", http.StatusBadRequest)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write(content)
+}
+
+// Добавим обработчик для сохранения файла
+func saveFileHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	fileName := r.URL.Query().Get("filename")
+	filePath := filepath.Join(config.FileDir, fileName)
+
+	// Проверяем права доступа
+	cookie, _ := r.Cookie("auth")
+	username := strings.Split(cookie.Value, ":")[0]
+
+	fileInfos, err := getFileInfos()
+	if err != nil {
+		http.Error(w, "Failed to get file info", http.StatusInternalServerError)
+		return
+	}
+
+	var isOwner bool
+	var isAdmin bool
+
+	for _, user := range userStore.(*JSONUserStore).Users {
+		if user.Username == username {
+			isAdmin = user.IsAdmin
+			break
+		}
+	}
+
+	for _, info := range fileInfos {
+		if info.Name == fileName {
+			isOwner = info.Owner == username
+			break
+		}
+	}
+
+	if !isOwner && !isAdmin {
+		http.Error(w, "Permission denied", http.StatusForbidden)
+		return
+	}
+
+	// Читаем новое содержимое
+	content, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Проверяем ограничения
+	lines := strings.Split(string(content), "\n")
+	if len(lines) > 4294967296 {
+		http.Error(w, "File has too many lines", http.StatusBadRequest)
+		return
+	}
+
+	for _, line := range lines {
+		if len(line) > 4294967296 {
+			http.Error(w, "File contains lines that are too long", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Сохраняем файл
+	err = os.WriteFile(filePath, content, 0644)
+	if err != nil {
+		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

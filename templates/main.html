@@ -5,7 +5,14 @@
     <title>File Management</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
-  <body>
+  <body class="light-theme">
+    <div class="theme-switch-wrapper">
+        <label class="theme-switch" for="checkbox">
+            <input type="checkbox" id="checkbox" />
+            <div class="slider round"></div>
+        </label>
+        <em>Dark Mode</em>
+    </div>
     {{if .IsAuthorized}}
     <h1>Welcome to File Management</h1>
     <form
@@ -22,6 +29,14 @@
       <progress id="progressBar" value="0" max="100"></progress>
       <p id="progressStatus">Uploading...</p>
     </div>
+    <div class="search-container">
+        <input 
+            type="text" 
+            id="fileSearch" 
+            placeholder="Search files..." 
+            oninput="filterFiles()"
+        >
+    </div>
     {{if .Files}}
     <h2>Files:</h2>
     {{else}}
@@ -29,11 +44,12 @@
     {{end}}
     <ul id="fileList">
       {{range .Files}}
-      <li>
+      <li data-filename="{{.Name | lower}}">
         <span>{{.Name}}</span>
         <span class="file-owner">(Owner: {{.Owner}})</span>
         <a href="/download?filename={{.Name}}" download>Download</a>
         {{if or (eq .Owner $.Username) $.IsAdmin}}
+        <button onclick="openFile('{{.Name}}')">Open</button>
         <form method="post" action="/delete" style="display: inline">
           <input type="hidden" name="filename" value="{{.Name}}" />
           <button type="submit">Delete</button>
@@ -42,6 +58,73 @@
       </li>
       {{end}}
     </ul>
+    <div id="editor-container" style="display: none;">
+        <div class="editor-toolbar">
+            <div class="toolbar-group">
+                <button onclick="saveFile()">Save</button>
+                <button onclick="saveAsFile()">Save As</button>
+                <button onclick="closeEditor()">Close</button>
+            </div>
+            <div class="toolbar-group">
+                <button onclick="cutText()">Cut</button>
+                <button onclick="copyText()">Copy</button>
+                <button onclick="pasteText()">Paste</button>
+            </div>
+            <div class="toolbar-group">
+                <button onclick="showFindDialog()">Find</button>
+                <button onclick="showReplaceDialog()">Replace</button>
+                <button onclick="showGoToDialog()">Go to Line</button>
+            </div>
+            <div class="toolbar-group">
+                <button onclick="toggleLineNumbers()">Line Numbers</button>
+                <select id="fontFamily" onchange="changeFontFamily()">
+                    <option value="monospace">Monospace</option>
+                    <option value="arial">Arial</option>
+                    <option value="times">Times New Roman</option>
+                </select>
+                <input type="number" id="fontSize" value="14" min="8" max="72" onchange="changeFontSize()">
+            </div>
+        </div>
+        
+        <div class="editor-main">
+            <div id="line-numbers"></div>
+            <textarea id="editor" spellcheck="false"></textarea>
+        </div>
+        
+        <div class="editor-statusbar">
+            <span id="cursor-position">Ln: 1, Col: 1</span>
+            <span id="file-stats">Chars: 0, Words: 0</span>
+            <span id="font-info">Font: 14px Monospace</span>
+            <span id="encoding">UTF-8</span>
+            <span id="insert-mode">INS</span>
+            <span id="save-status">Saved</span>
+        </div>
+
+        <!-- Диалоговые окна -->
+        <div id="find-dialog" class="dialog" style="display: none;">
+            <input type="text" id="find-text" placeholder="Find...">
+            <button onclick="findNext()">Find Next</button>
+            <button onclick="closeFindDialog()">Close</button>
+        </div>
+
+        <div id="replace-dialog" class="dialog" style="display: none;">
+            <input type="text" id="find-replace-text" placeholder="Find...">
+            <input type="text" id="replace-text" placeholder="Replace with...">
+            <button onclick="replaceNext()">Replace</button>
+            <button onclick="replaceAll()">Replace All</button>
+            <button onclick="closeReplaceDialog()">Close</button>
+        </div>
+
+        <!-- Диалог перехода к строке -->
+        <div id="goto-dialog" class="dialog" style="display: none;">
+            <label for="goto-line">Enter line number:</label>
+            <input type="number" id="goto-line" min="1" placeholder="Line number...">
+            <div class="button-group">
+                <button onclick="goToLine()">Go</button>
+                <button onclick="closeGoToDialog()">Close</button>
+            </div>
+        </div>
+    </div>
     <form method="post" action="/logout" style="margin-top: 20px">
       <button type="submit">Logout</button>
     </form>
@@ -75,128 +158,486 @@
     </div>
     {{end}}
     <script>
-// Обработчик отправки формы загрузки файла
-document.getElementById('uploadForm').addEventListener('submit', function(event) {
-    event.preventDefault();
-    const form = event.target;
-    const fileInput = document.getElementById('file');
-    const file = fileInput.files[0];
+// Обновим код для переключения темы
+const themeSwitch = document.querySelector('#checkbox');
+const currentTheme = localStorage.getItem('theme') || 'light-theme';
 
-    // Проверка наличия файла
-    if (!file) {
-        alert('Please select a file to upload.');
-        return;
+// Устанавливаем начальное состояние
+document.documentElement.className = currentTheme;
+document.body.classList.add(currentTheme);
+if (currentTheme === 'dark-theme') {
+    themeSwitch.checked = true;
+}
+
+themeSwitch.addEventListener('change', function(e) {
+    if (e.target.checked) {
+        document.documentElement.className = 'dark-theme';
+        document.body.classList.remove('light-theme');
+        document.body.classList.add('dark-theme');
+        localStorage.setItem('theme', 'dark-theme');
+    } else {
+        document.documentElement.className = 'light-theme';
+        document.body.classList.remove('dark-theme');
+        document.body.classList.add('light-theme');
+        localStorage.setItem('theme', 'light-theme');
     }
-
-    // Получаем элементы прогресс-бара
-    const progressContainer = document.getElementById('progressContainer');
-    const progressBar = document.getElementById('progressBar');
-    const progressStatus = document.getElementById('progressStatus');
-
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', form.action, true);
-
-    // Обработчик прогресса загрузки
-    xhr.upload.onprogress = function(event) {
-        if (event.lengthComputable) {
-            const percentComplete = Math.round((event.loaded / event.total) * 100);
-            progressBar.value = percentComplete;
-            progressStatus.textContent = `Uploaded ${event.loaded} of ${event.total} bytes (${percentComplete}%)`;
-        }
-    };
-
-    // Обработчик завершения загрузки
-    xhr.onload = function() {
-        if (xhr.status === 200) {
-            alert('File uploaded successfully!');
-            progressContainer.style.display = 'none';
-            progressBar.value = 0;
-            progressStatus.textContent = '';
-            fileInput.value = ''; // Очистка поля ввода файла
-            // Обновляем страницу для отображения нового списка файлов
-            window.location.reload();
-        } else {
-            alert('Failed to upload file.');
-        }
-    };
-
-    // Обработчик ошибки загрузки
-    xhr.onerror = function() {
-        alert('An error occurred while uploading the file.');
-    };
-
-    // Отправляем файл
-    progressContainer.style.display = 'block';
-    const formData = new FormData(form);
-    xhr.send(formData);
 });
 
-// Функция обновления списка файлов
-function updateFileList() {
-    const fileList = document.querySelector('ul');
-    const fileHeader = document.querySelector('h2');
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', '/files', true);
-    
-    xhr.onload = function() {
-        if (xhr.status === 200) {
-            const files = JSON.parse(xhr.responseText);
-            fileList.innerHTML = ''; // Очистка текущего списка
+// Добавим константы для ограничений
+const MAX_LINE_LENGTH = 4294967296;
+const MAX_LINES = 4294967296;
+
+// Функции для работы с редактором
+let currentFile = '';
+let isModified = false;
+
+function openFile(filename) {
+    currentFile = filename;
+    fetch(`/openFile?filename=${filename}`)
+        .then(response => response.text())
+        .then(content => {
+            const editor = document.getElementById('editor');
+            editor.value = content;
             
-            // Обновляем заголовок в зависимости от наличия файлов
-            fileHeader.textContent = files.length > 0 ? 'Files:' : 'Список файлов пуст';
+            // Проверяем ограничения при открытии файла
+            const lines = content.split('\n');
+            if (lines.length > MAX_LINES) {
+                alert('File has too many lines and cannot be opened!');
+                return;
+            }
             
-            // Создаем элементы списка файлов
-            files.forEach(function(file) {
-                const li = document.createElement('li');
-                
-                // Создаем элемент для имени файла
-                const nameSpan = document.createElement('span');
-                nameSpan.textContent = file.Name;
-                
-                // Создаем элемент для владельца
-                const ownerSpan = document.createElement('span');
-                ownerSpan.className = 'file-owner';
-                ownerSpan.textContent = `(Owner: ${file.Owner})`;
-                
-                // Создаем ссылку для скачивания
-                const downloadLink = document.createElement('a');
-                downloadLink.href = `/download?filename=${file.Name}`;
-                downloadLink.textContent = 'Download';
-                downloadLink.download = true;
-
-                // Добавляем элементы в li
-                li.appendChild(nameSpan);
-                li.appendChild(ownerSpan);
-                li.appendChild(downloadLink);
-
-                // Добавляем кнопку удаления только если есть права
-                if (file.can_delete) {
-                    const form = document.createElement('form');
-                    form.method = 'post';
-                    form.action = '/delete';
-                    form.style.display = 'inline';
-
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = 'filename';
-                    input.value = file.Name;
-
-                    const button = document.createElement('button');
-                    button.type = 'submit';
-                    button.textContent = 'Delete';
-
-                    form.appendChild(input);
-                    form.appendChild(button);
-                    li.appendChild(form);
+            for (let line of lines) {
+                if (line.length > MAX_LINE_LENGTH) {
+                    alert('File contains lines that are too long and cannot be opened!');
+                    return;
                 }
-
-                fileList.appendChild(li);
-            });
-        }
-    };
-    xhr.send();
+            }
+            
+            document.getElementById('editor-container').style.display = 'flex';
+            updateLineNumbers();
+            updateStats();
+            updateCursorPosition(editor);
+            isModified = false;
+            updateSaveStatus();
+        });
 }
+
+function saveFile() {
+    fetch(`/saveFile?filename=${currentFile}`, {
+        method: 'POST',
+        body: document.getElementById('editor').value
+    }).then(() => {
+        isModified = false;
+        updateSaveStatus();
+    });
+}
+
+function saveAsFile() {
+    const content = document.getElementById('editor').value;
+    const blob = new Blob([content], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = currentFile;
+    a.click();
+}
+
+function closeEditor() {
+    if (isModified) {
+        if (confirm('Do you want to save changes?')) {
+            saveFile();
+        }
+    }
+    document.getElementById('editor-container').style.display = 'none';
+}
+
+// Обновим функцию updateLineNumbers
+function updateLineNumbers() {
+    const editor = document.getElementById('editor');
+    const lineNumbers = document.getElementById('line-numbers');
+    const lines = editor.value.split('\n');
+    
+    // Проверяем ограничения
+    if (lines.length > MAX_LINES) {
+        alert('File has too many lines!');
+        return false;
+    }
+    
+    for (let line of lines) {
+        if (line.length > MAX_LINE_LENGTH) {
+            alert('Line is too long!');
+            return false;
+        }
+    }
+    
+    lineNumbers.innerHTML = lines.map((_, i) => i + 1).join('\n');
+    return true;
+}
+
+function updateStats() {
+    const editor = document.getElementById('editor');
+    const text = editor.value;
+    const chars = text.length;
+    const words = text.trim().split(/\s+/).length;
+    document.getElementById('file-stats').textContent = `Chars: ${chars}, Words: ${words}`;
+}
+
+// Обновим обработчик ввода
+document.getElementById('editor').addEventListener('input', (e) => {
+    const lines = e.target.value.split('\n');
+    const currentLine = e.target.value.substr(0, e.target.selectionStart).split('\n').length - 1;
+    
+    // Проверяем длину текущей строки
+    if (lines[currentLine].length > MAX_LINE_LENGTH) {
+        alert('Line length limit exceeded!');
+        e.preventDefault();
+        return;
+    }
+    
+    // Проверяем количество строк
+    if (lines.length > MAX_LINES) {
+        alert('Maximum number of lines exceeded!');
+        e.preventDefault();
+        return;
+    }
+    
+    isModified = true;
+    updateSaveStatus();
+    updateLineNumbers();
+    updateStats();
+});
+
+// Функции для работы с диалогами
+function showFindDialog() {
+    document.getElementById('find-dialog').style.display = 'block';
+}
+
+function showReplaceDialog() {
+    document.getElementById('replace-dialog').style.display = 'block';
+}
+
+function showGoToDialog() {
+    document.getElementById('goto-dialog').style.display = 'block';
+}
+
+function closeGoToDialog() {
+    document.getElementById('goto-dialog').style.display = 'none';
+    document.getElementById('goto-line').value = '';
+}
+
+function goToLine() {
+    const lineNumber = parseInt(document.getElementById('goto-line').value);
+    const editor = document.getElementById('editor');
+    const lines = editor.value.split('\n');
+    
+    if (isNaN(lineNumber) || lineNumber < 1 || lineNumber > lines.length) {
+        alert(`Please enter a valid line number between 1 and ${lines.length}`);
+        return;
+    }
+    
+    // Находим позицию начала строки
+    let position = 0;
+    for (let i = 0; i < lineNumber - 1; i++) {
+        position += lines[i].length + 1; // +1 для учета символа новой строки
+    }
+    
+    // Устанавливаем курсор на нужную строку
+    editor.focus();
+    editor.setSelectionRange(position, position);
+    
+    // Прокручиваем к выбранной строке
+    const lineHeight = parseInt(window.getComputedStyle(editor).lineHeight);
+    editor.scrollTop = (lineNumber - 1) * lineHeight;
+    
+    // Закрываем диалог
+    closeGoToDialog();
+}
+
+// Добавляем обработчик клавиши Enter для поля ввода номера строки
+document.getElementById('goto-line').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        goToLine();
+    }
+});
+
+// Добавляем обработчик клавиши Escape для закрытия диалога
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && document.getElementById('goto-dialog').style.display === 'block') {
+        closeGoToDialog();
+    }
+});
+
+// Функции для работы со шрифтами
+function changeFontFamily() {
+    const fontFamily = document.getElementById('fontFamily').value;
+    document.getElementById('editor').style.fontFamily = fontFamily;
+}
+
+function changeFontSize() {
+    const fontSize = document.getElementById('fontSize').value;
+    const editor = document.getElementById('editor');
+    const lineNumbers = document.getElementById('line-numbers');
+    
+    editor.style.fontSize = fontSize + 'px';
+    lineNumbers.style.fontSize = fontSize + 'px';
+    
+    // Обновляем информацию о шрифте в статусной строке
+    document.getElementById('font-info').textContent = 
+        `Font: ${fontSize}px ${document.getElementById('fontFamily').value}`;
+}
+
+// Вспомогательные функции
+function updateSaveStatus() {
+    document.getElementById('save-status').textContent = isModified ? 'Modified' : 'Saved';
+}
+
+// Обновим обработчик масштабирования
+document.getElementById('editor').addEventListener('wheel', (e) => {
+    if (e.ctrlKey) {
+        e.preventDefault();
+        const fontSize = parseInt(document.getElementById('fontSize').value);
+        const newSize = e.deltaY < 0 ? fontSize + 1 : fontSize - 1;
+        if (newSize >= 8 && newSize <= 72) {
+            document.getElementById('fontSize').value = newSize;
+            changeFontSize();
+        }
+    }
+});
+
+// Добавим синхронизацию скролла
+document.getElementById('editor').addEventListener('scroll', function() {
+    const lineNumbers = document.getElementById('line-numbers');
+    lineNumbers.scrollTop = this.scrollTop;
+});
+
+// Функции для работы с текстом
+function cutText() {
+    const editor = document.getElementById('editor');
+    const selectedText = editor.value.substring(editor.selectionStart, editor.selectionEnd);
+    if (selectedText) {
+        navigator.clipboard.writeText(selectedText).then(() => {
+            const start = editor.selectionStart;
+            editor.value = editor.value.slice(0, editor.selectionStart) + 
+                          editor.value.slice(editor.selectionEnd);
+            editor.selectionStart = editor.selectionEnd = start;
+            isModified = true;
+            updateSaveStatus();
+            updateLineNumbers();
+            updateStats();
+        });
+    }
+}
+
+function copyText() {
+    const editor = document.getElementById('editor');
+    const selectedText = editor.value.substring(editor.selectionStart, editor.selectionEnd);
+    if (selectedText) {
+        navigator.clipboard.writeText(selectedText);
+    }
+}
+
+function pasteText() {
+    navigator.clipboard.readText().then(text => {
+        const editor = document.getElementById('editor');
+        const start = editor.selectionStart;
+        editor.value = editor.value.slice(0, editor.selectionStart) + 
+                      text +
+                      editor.value.slice(editor.selectionEnd);
+        editor.selectionStart = editor.selectionEnd = start + text.length;
+        isModified = true;
+        updateSaveStatus();
+        updateLineNumbers();
+        updateStats();
+    });
+}
+
+// Функции для поиска и замены
+function findNext() {
+    const editor = document.getElementById('editor');
+    const searchText = document.getElementById('find-text').value;
+    if (!searchText) return;
+
+    const content = editor.value;
+    const startPos = editor.selectionEnd;
+    const foundPos = content.indexOf(searchText, startPos);
+
+    if (foundPos !== -1) {
+        editor.setSelectionRange(foundPos, foundPos + searchText.length);
+        editor.focus();
+        // Прокручиваем к найденному тексту
+        const lineHeight = parseInt(window.getComputedStyle(editor).lineHeight);
+        const lines = editor.value.substr(0, foundPos).split('\n').length - 1;
+        editor.scrollTop = lines * lineHeight;
+    } else {
+        // Если не найдено, начинаем поиск сначала
+        const firstPos = content.indexOf(searchText);
+        if (firstPos !== -1) {
+            editor.setSelectionRange(firstPos, firstPos + searchText.length);
+            editor.focus();
+            const lineHeight = parseInt(window.getComputedStyle(editor).lineHeight);
+            const lines = editor.value.substr(0, firstPos).split('\n').length - 1;
+            editor.scrollTop = lines * lineHeight;
+        } else {
+            alert('Text not found');
+        }
+    }
+}
+
+function closeFindDialog() {
+    document.getElementById('find-dialog').style.display = 'none';
+    document.getElementById('find-text').value = '';
+}
+
+function replaceNext() {
+    const editor = document.getElementById('editor');
+    const searchText = document.getElementById('find-replace-text').value;
+    const replaceText = document.getElementById('replace-text').value;
+    
+    if (!searchText) return;
+
+    const content = editor.value;
+    const startPos = editor.selectionEnd;
+    const foundPos = content.indexOf(searchText, startPos);
+
+    if (foundPos !== -1) {
+        editor.value = content.slice(0, foundPos) + replaceText + content.slice(foundPos + searchText.length);
+        editor.setSelectionRange(foundPos, foundPos + replaceText.length);
+        editor.focus();
+        isModified = true;
+        updateSaveStatus();
+        updateLineNumbers();
+        updateStats();
+    } else {
+        alert('Text not found');
+    }
+}
+
+function replaceAll() {
+    const editor = document.getElementById('editor');
+    const searchText = document.getElementById('find-replace-text').value;
+    const replaceText = document.getElementById('replace-text').value;
+    
+    if (!searchText) return;
+
+    const content = editor.value;
+    const newContent = content.split(searchText).join(replaceText);
+    
+    if (content !== newContent) {
+        editor.value = newContent;
+        isModified = true;
+        updateSaveStatus();
+        updateLineNumbers();
+        updateStats();
+    }
+}
+
+function closeReplaceDialog() {
+    document.getElementById('replace-dialog').style.display = 'none';
+    document.getElementById('find-replace-text').value = '';
+    document.getElementById('replace-text').value = '';
+}
+
+let lineNumbersVisible = true;
+function toggleLineNumbers() {
+    const lineNumbers = document.getElementById('line-numbers');
+    lineNumbersVisible = !lineNumbersVisible;
+    lineNumbers.style.display = lineNumbersVisible ? 'block' : 'none';
+}
+
+// Добавляем обработчики клавиш для диалогов поиска и замены
+document.getElementById('find-text').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        findNext();
+    }
+    if (e.key === 'Escape') {
+        closeFindDialog();
+    }
+});
+
+document.getElementById('find-replace-text').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        replaceNext();
+    }
+    if (e.key === 'Escape') {
+        closeReplaceDialog();
+    }
+});
+
+// Обновим функцию для определения позиции курсора
+function updateCursorPosition(editor) {
+    const pos = editor.selectionStart;
+    const text = editor.value;
+    
+    // Находим текущую строку и колонку
+    const lines = text.substr(0, pos).split('\n');
+    const currentLine = lines.length;
+    const currentColumn = lines[lines.length - 1].length + 1;
+    
+    // Обновляем информацию в статусной строке
+    document.getElementById('cursor-position').textContent = 
+        `Ln: ${currentLine}, Col: ${currentColumn}`;
+}
+
+// Добавляем обработчики событий для отслеживания позиции курсора
+document.getElementById('editor').addEventListener('keyup', function(e) {
+    updateCursorPosition(this);
+});
+
+document.getElementById('editor').addEventListener('click', function(e) {
+    updateCursorPosition(this);
+});
+
+document.getElementById('editor').addEventListener('mouseup', function(e) {
+    updateCursorPosition(this);
+});
+
+// Обновляем обработчик для режима замены/вставки
+document.getElementById('editor').addEventListener('keydown', function(e) {
+    if (e.key === 'Insert') {
+        insertMode = !insertMode;
+        document.getElementById('insert-mode').textContent = insertMode ? 'INS' : 'OVR';
+    }
+    // Обновляем позицию курсора после изменения текста
+    updateCursorPosition(this);
+});
+
+// Добавляем обработчик для обновления при выделении текста
+document.getElementById('editor').addEventListener('select', function(e) {
+    updateCursorPosition(this);
+});
+
+// Добавим функцию фильтрации файлов
+function filterFiles() {
+    const searchText = document.getElementById('fileSearch').value.toLowerCase();
+    const fileList = document.getElementById('fileList');
+    const files = fileList.getElementsByTagName('li');
+    let hasVisibleFiles = false;
+
+    for (let file of files) {
+        const filename = file.getAttribute('data-filename');
+        if (filename.includes(searchText)) {
+            file.style.display = '';
+            hasVisibleFiles = true;
+        } else {
+            file.style.display = 'none';
+        }
+    }
+
+    // Обновляем заголовок в зависимости от результатов поиска
+    const fileHeader = document.querySelector('h2');
+    if (!hasVisibleFiles) {
+        fileHeader.textContent = 'No files found';
+    } else {
+        fileHeader.textContent = 'Files:';
+    }
+}
+
+// Показываем содержимое после полной загрузки стилей
+window.addEventListener('load', function() {
+    document.body.style.visibility = 'visible';
+});
     </script>
   </body>
 </html>

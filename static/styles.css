@@ -1,24 +1,33 @@
+/* Добавим стили для html */
+:root, html {
+    transition: none !important;
+}
+
+html.dark-theme {
+    background-color: #1a1a1a;
+}
+
+html.light-theme {
+    background-color: #f4f4f9;
+}
+
 /* Основные стили для тела страницы */
 body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f4f4f9;
-    color: #333;
+    background-color: var(--bg-color);
+    color: var(--text-color);
     line-height: 1.6;
+    transition: background-color var(--transition-speed) ease,
+                color var(--transition-speed) ease;
 }
 
 /* Стили для заголовков */
-h1 {
+h1, h2 {
     text-align: center;
     margin: 20px 0;
-    color: #444;
-}
-
-h2 {
-    text-align: center;
-    margin: 20px 0;
-    color: #444;
+    color: var(--heading-color);
 }
 
 /* Центрирование и стилизация формы */
@@ -26,8 +35,8 @@ form {
     max-width: 400px;
     margin: 20px auto;
     padding: 15px;
-    background: #fff;
-    border: 1px solid #ddd;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     border-radius: 5px;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
@@ -37,6 +46,7 @@ form label {
     display: block;
     margin-bottom: 8px;
     font-weight: bold;
+    color: var(--text-color);
 }
 
 form input[type="text"],
@@ -45,7 +55,9 @@ form input[type="file"] {
     width: 100%;
     padding: 10px;
     margin-bottom: 15px;
-    border: 1px solid #ccc;
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     box-sizing: border-box;
 }
@@ -55,9 +67,9 @@ form button {
     display: inline-block;
     width: 100%;
     padding: 10px;
-    background-color: #007bff;
+    background-color: var(--primary-color);
     border: none;
-    color: white;
+    color: var(--button-text);
     font-size: 16px;
     border-radius: 4px;
     cursor: pointer;
@@ -65,7 +77,7 @@ form button {
 }
 
 form button:hover {
-    background-color: #0056b3;
+    background-color: var(--hover-color);
 }
 
 /* Стили списка файлов */
@@ -82,14 +94,15 @@ ul li {
     align-items: center;
     gap: 15px;
     padding: 10px;
-    background: #fff;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     margin-bottom: 10px;
 }
 
 /* Стили для информации о владельце файла */
 .file-owner {
-    color: #666;
+    color: var(--secondary-text);
     font-size: 0.9em;
     min-width: 150px;
 }
@@ -100,16 +113,16 @@ ul li span:first-child {
 }
 
 ul li a {
-    color: #007bff;
+    color: var(--link-color);
     text-decoration: none;
     padding: 5px 10px;
-    border: 1px solid #007bff;
+    border: 1px solid var(--link-color);
     border-radius: 4px;
 }
 
 ul li a:hover {
-    background: #007bff;
-    color: white;
+    background: var(--link-color);
+    color: var(--button-text);
 }
 
 ul li form {
@@ -134,7 +147,7 @@ ul li button:hover {
 
 /* Стили для сообщений об ошибке */
 .error {
-    color: #dc3545;
+    color: var(--error-color);
     font-weight: bold;
     text-align: center;
     margin-top: 20px;
@@ -150,7 +163,8 @@ ul li button:hover {
 /* Стили для секций входа и регистрации */
 .login-section, .register-section {
     padding: 20px;
-    border: 1px solid #ccc;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
     border-radius: 5px;
     width: 300px;
 }
@@ -168,15 +182,15 @@ input {
 
 button {
     padding: 10px;
-    background-color: #007bff;
-    color: white;
+    background-color: var(--primary-color);
+    color: var(--button-text);
     border: none;
     border-radius: 5px;
     cursor: pointer;
 }
 
 button:hover {
-    background-color: #0056b3;
+    background-color: var(--hover-color);
 }
 
 /* Стили для прогресс-бара */
@@ -188,4 +202,423 @@ button:hover {
 #progressBar {
     width: 100%;
     height: 20px;
+}
+
+/* Стили для редактора */
+#editor-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--editor-bg);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-toolbar {
+    padding: 10px;
+    background: var(--toolbar-bg);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    gap: 20px;
+}
+
+.toolbar-group {
+    display: flex;
+    gap: 5px;
+}
+
+.editor-main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+}
+
+#line-numbers {
+    padding: 5px 10px;
+    background: var(--toolbar-bg);
+    border-right: 1px solid var(--border-color);
+    text-align: right;
+    color: var(--text-color);
+    user-select: none;
+    overflow-y: hidden;
+    font-family: monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre;
+    box-sizing: border-box;
+}
+
+#editor {
+    flex: 1;
+    resize: none;
+    border: none;
+    padding: 5px 10px;
+    font-family: monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    tab-size: 4;
+    overflow-y: auto;
+    white-space: pre;
+    box-sizing: border-box;
+}
+
+/* Стили для кнопок в тулбаре */
+.editor-toolbar button {
+    padding: 5px 10px;
+    background: var(--toolbar-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-color);
+}
+
+.editor-toolbar button:hover {
+    background: var(--hover-color);
+    color: var(--button-text);
+}
+
+.editor-toolbar select,
+.editor-toolbar input {
+    padding: 4px 8px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+/* Стили для статусной строки */
+.editor-statusbar span {
+    padding: 0 10px;
+    border-right: 1px solid var(--border-color);
+}
+
+.editor-statusbar span:last-child {
+    border-right: none;
+}
+
+/* Улучшенные стили для диалогов */
+.dialog label {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.dialog input {
+    margin-bottom: 10px;
+}
+
+/* Стили для выделенного текста */
+#editor::selection {
+    background: var(--primary-color);
+    color: var(--button-text);
+}
+
+/* Улучшенные стили для скроллбара */
+#editor::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+#editor::-webkit-scrollbar-track {
+    background: var(--toolbar-bg);
+    border-radius: 6px;
+}
+
+#editor::-webkit-scrollbar-thumb {
+    background-color: var(--secondary-text);
+    border-color: var(--toolbar-bg);
+    border-radius: 6px;
+}
+
+#editor::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-color);
+}
+
+.editor-statusbar {
+    padding: 5px 10px;
+    background: var(--toolbar-bg);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+}
+
+.dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--dialog-bg);
+    padding: 20px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dialog input {
+    padding: 8px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    width: 200px;
+}
+
+.dialog button {
+    padding: 8px 16px;
+    background: var(--primary-color);
+    color: var(--button-text);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin: 0 5px;
+}
+
+.dialog button:hover {
+    background: var(--hover-color);
+}
+
+.dialog .button-group {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+/* Стили для поиска файлов */
+.search-container {
+    max-width: 600px;
+    margin: 20px auto;
+    padding: 0 15px;
+}
+
+.search-container input {
+    width: 100%;
+    padding: 10px 15px;
+    font-size: 16px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    transition: border-color 0.3s ease;
+}
+
+.search-container input:focus {
+    border-color: var(--primary-color);
+    outline: none;
+    box-shadow: 0 0 5px rgba(74, 158, 255, 0.3);
+}
+
+.search-container input::placeholder {
+    color: var(--secondary-text);
+}
+
+/* Анимация для скрытия/показа элементов списка */
+#fileList li {
+    transition: opacity 0.3s ease;
+}
+
+#fileList li[style*="display: none"] {
+    opacity: 0;
+}
+
+#fileList li:not([style*="display: none"]) {
+    opacity: 1;
+}
+
+:root {
+    /* Светлая тема */
+    --primary-color: #007bff;
+    --bg-color: #f4f4f9;
+    --text-color: #333;
+    --border-color: #ddd;
+    --hover-color: #0056b3;
+    --editor-bg: white;
+    --toolbar-bg: #f5f5f5;
+    --dialog-bg: white;
+    --input-bg: white;
+    --card-bg: white;
+    --heading-color: #444;
+    --secondary-text: #666;
+    --link-color: #007bff;
+    --link-hover-color: #0056b3;
+    --button-text: white;
+    --error-color: #dc3545;
+    --success-color: #28a745;
+    
+    /* Анимации */
+    --transition-speed: 0.3s;
+}
+
+/* Тёмная тема */
+body.dark-theme {
+    --primary-color: #4a9eff;
+    --bg-color: #1a1a1a;
+    --text-color: #f4f4f4;
+    --border-color: #444;
+    --hover-color: #63b1ff;
+    --editor-bg: #2d2d2d;
+    --toolbar-bg: #363636;
+    --dialog-bg: #2d2d2d;
+    --input-bg: #363636;
+    --card-bg: #2d2d2d;
+    --heading-color: #f4f4f4;
+    --secondary-text: #aaa;
+    --link-color: #4a9eff;
+    --link-hover-color: #63b1ff;
+    --button-text: #f4f4f4;
+    --error-color: #ff6b6b;
+    --success-color: #4cd964;
+}
+
+/* Переключатель темы */
+.theme-switch-wrapper {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    z-index: 100;
+}
+
+.theme-switch {
+    display: inline-block;
+    height: 34px;
+    width: 60px;
+    position: relative;
+}
+
+.theme-switch input {
+    display: none;
+}
+
+.slider {
+    background-color: #ccc;
+    bottom: 0;
+    cursor: pointer;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    transition: .4s;
+}
+
+.slider:before {
+    background-color: #fff;
+    bottom: 4px;
+    content: "";
+    height: 26px;
+    left: 4px;
+    position: absolute;
+    transition: .4s;
+    width: 26px;
+}
+
+input:checked + .slider {
+    background-color: var(--primary-color);
+}
+
+input:checked + .slider:before {
+    transform: translateX(26px);
+}
+
+.slider.round {
+    border-radius: 34px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+/* Анимации для элементов */
+button {
+    transition: background-color var(--transition-speed) ease,
+                transform 0.1s ease;
+}
+
+button:hover {
+    transform: translateY(-2px);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+input, textarea {
+    transition: border-color var(--transition-speed) ease,
+                background-color var(--transition-speed) ease;
+    background-color: var(--input-bg);
+    color: var(--text-color);
+}
+
+/* Обновленные стили для редактора */
+#editor-container {
+    background: var(--editor-bg);
+}
+
+.editor-toolbar {
+    background: var(--toolbar-bg);
+    border-color: var(--border-color);
+}
+
+#line-numbers {
+    background: var(--toolbar-bg);
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+#editor {
+    background: var(--editor-bg);
+    color: var(--text-color);
+}
+
+.editor-statusbar {
+    background: var(--toolbar-bg);
+    border-color: var(--border-color);
+    color: var(--text-color);
+}
+
+/* Анимации для списка файлов */
+#fileList li {
+    transition: transform var(--transition-speed) ease,
+                opacity var(--transition-speed) ease;
+}
+
+#fileList li:hover {
+    transform: translateX(10px);
+}
+
+/* Анимации для диалогов */
+.dialog {
+    background: var(--dialog-bg);
+    transition: opacity var(--transition-speed) ease,
+                transform var(--transition-speed) ease;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translate(-50%, -60%);
+        opacity: 0;
+    }
+    to {
+        transform: translate(-50%, -50%);
+        opacity: 1;
+    }
+}
+
+/* Обновляем стили для переключателя темы */
+.theme-switch-wrapper em {
+    color: var(--text-color);
+    margin-left: 10px;
+    font-size: 14px;
 }
