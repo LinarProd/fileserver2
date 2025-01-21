@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -32,11 +33,20 @@ type Config struct {
 type User struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	IsAdmin  bool   `json:"is_admin"`
+}
+
+// Структура для хранения информации о файле
+type FileInfo struct {
+	Name    string `json:"name"`    // Имя файла
+	Owner   string `json:"owner"`   // Владелец файла
+	Created string `json:"created"` // Дата создания
 }
 
 type UserStore interface {
 	LoadUsers() error
 	ValidateCredentials(username, password string) bool
+	AddUser(username, password string) error
 }
 
 type JSONUserStore struct {
@@ -115,6 +125,43 @@ func (store *PostgresUserStore) ValidateCredentials(username, password string) b
 	return dbPassword == password
 }
 
+func (store *JSONUserStore) AddUser(username, password string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+
+	// Проверка на существующего пользователя
+	for _, user := range store.Users {
+		if user.Username == username {
+			return fmt.Errorf("пользователь уже существует")
+		}
+	}
+
+	// Добавление нового пользователя
+	store.Users = append(store.Users, User{
+		Username: username,
+		Password: password,
+		IsAdmin:  false,
+	})
+
+	// Сохранение в файл с форматированием
+	file, err := os.Create(config.UserFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Создаем encoder с отступами
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "    ")
+
+	return encoder.Encode(store)
+}
+
+func (store *PostgresUserStore) AddUser(username, password string) error {
+	_, err := db.Exec("INSERT INTO users (username, password) VALUES ($1, $2)", username, password)
+	return err
+}
+
 func main() {
 	// Load config
 	configFile, err := os.Open("config.json")
@@ -156,6 +203,7 @@ func main() {
 	http.HandleFunc("/delete", authMiddleware(deleteHandler))
 	http.HandleFunc("/download", authMiddleware(downloadHandler))
 	http.HandleFunc("/logout", logoutHandler)
+	http.HandleFunc("/register", registerHandler)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	// Start server
@@ -235,22 +283,37 @@ func mainPageHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Список файлов для авторизованных пользователей
-	var fileNames []string
-	if isAuthorized {
-		files, _ := os.ReadDir(config.FileDir)
-		for _, file := range files {
-			fileNames = append(fileNames, file.Name())
+	// Получаем информацию о файлах
+	fileInfos, err := getFileInfos()
+	if err != nil {
+		http.Error(w, "Failed to get file info", http.StatusInternalServerError)
+		return
+	}
+
+	// Получаем информацию о текущем пользователе
+	var isAdmin bool
+	var currentUsername string
+	if cookie, err := r.Cookie("auth"); err == nil {
+		currentUsername = strings.Split(cookie.Value, ":")[0]
+		for _, user := range userStore.(*JSONUserStore).Users {
+			if user.Username == currentUsername {
+				isAdmin = user.IsAdmin
+				break
+			}
 		}
 	}
 
 	// Рендеринг страницы
 	data := struct {
 		IsAuthorized bool
-		Files        []string
+		Files        []FileInfo
+		Username     string
+		IsAdmin      bool
 	}{
 		IsAuthorized: isAuthorized,
-		Files:        fileNames,
+		Files:        fileInfos,
+		Username:     currentUsername,
+		IsAdmin:      isAdmin,
 	}
 
 	err = templates.ExecuteTemplate(w, "main.html", data)
@@ -259,13 +322,19 @@ func mainPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Upload handler
+// Обработчик загрузки файлов
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
+	// Проверяем метод запроса
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
+	// Получаем имя пользователя из cookie
+	cookie, _ := r.Cookie("auth")
+	username := strings.Split(cookie.Value, ":")[0]
+
+	// Получаем файл из формы
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		http.Error(w, "Failed to read file", http.StatusBadRequest)
@@ -273,6 +342,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	// Создаем путь для сохранения файла
 	filePath := filepath.Join(config.FileDir, header.Filename)
 	out, err := os.Create(filePath)
 	if err != nil {
@@ -281,10 +351,63 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer out.Close()
 
+	// Копируем содержимое файла
 	if _, err := io.Copy(out, file); err != nil {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
+		return
 	}
+
+	// Создаем информацию о файле
+	fileInfo := FileInfo{
+		Name:    header.Filename,
+		Owner:   username,
+		Created: time.Now().Format(time.RFC3339),
+	}
+
+	// Сохраняем информацию о файле
+	saveFileInfo(fileInfo)
+
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// Функция для сохранения информации о файле
+func saveFileInfo(info FileInfo) error {
+	filePath := filepath.Join(config.FileDir, ".fileinfo.json")
+	var fileInfos []FileInfo
+
+	// Читаем существующие данные
+	data, err := os.ReadFile(filePath)
+	if err == nil {
+		json.Unmarshal(data, &fileInfos)
+	}
+
+	// Добавляем новую информацию
+	fileInfos = append(fileInfos, info)
+
+	// Сохраняем обновленные данные
+	data, err = json.Marshal(fileInfos)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filePath, data, 0644)
+}
+
+// Функция для получения информации о файлах
+func getFileInfos() ([]FileInfo, error) {
+	filePath := filepath.Join(config.FileDir, ".fileinfo.json")
+	var fileInfos []FileInfo
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []FileInfo{}, nil
+		}
+		return nil, err
+	}
+
+	err = json.Unmarshal(data, &fileInfos)
+	return fileInfos, err
 }
 
 // File listing handler
@@ -298,40 +421,125 @@ func filesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files, err := os.ReadDir(config.FileDir)
+	// Получаем информацию о файлах из .fileinfo.json
+	fileInfos, err := getFileInfos()
 	if err != nil {
-		http.Error(w, "Failed to list files", http.StatusInternalServerError)
+		http.Error(w, "Failed to get file info", http.StatusInternalServerError)
 		return
 	}
 
-	fileNames := []string{}
-	for _, file := range files {
-		fileNames = append(fileNames, file.Name())
+	// Получаем имя текущего пользователя из cookie
+	cookie, _ := r.Cookie("auth")
+	username := strings.Split(cookie.Value, ":")[0]
+
+	// Проверяем, является ли пользователь администратором
+	var isAdmin bool
+	for _, user := range userStore.(*JSONUserStore).Users {
+		if user.Username == username {
+			isAdmin = user.IsAdmin
+			break
+		}
+	}
+
+	// Формируем ответ с информацией о правах доступа
+	type FileResponse struct {
+		FileInfo
+		CanDelete bool `json:"can_delete"`
+	}
+
+	response := make([]FileResponse, 0)
+	for _, info := range fileInfos {
+		response = append(response, FileResponse{
+			FileInfo:  info,
+			CanDelete: isAdmin || info.Owner == username,
+		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(fileNames)
+	json.NewEncoder(w).Encode(response)
 }
 
 // File delete handler
 func deleteHandler(w http.ResponseWriter, r *http.Request) {
-	// Logic for deleting files
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	fileName := r.FormValue("filename")
-	filePath := filepath.Join(config.FileDir, fileName)
+	// Получаем имя пользователя из cookie
+	cookie, _ := r.Cookie("auth")
+	username := strings.Split(cookie.Value, ":")[0]
 
-	// Попытка удалить файл
+	fileName := r.FormValue("filename")
+
+	// Проверяем права на удаление
+	fileInfos, err := getFileInfos()
+	if err != nil {
+		http.Error(w, "Failed to get file info", http.StatusInternalServerError)
+		return
+	}
+
+	var isOwner bool
+	var isAdmin bool
+
+	// Проверяем, является ли пользователь владельцем файла или админом
+	for _, user := range userStore.(*JSONUserStore).Users {
+		if user.Username == username {
+			isAdmin = user.IsAdmin
+			break
+		}
+	}
+
+	for _, info := range fileInfos {
+		if info.Name == fileName {
+			isOwner = info.Owner == username
+			break
+		}
+	}
+
+	if !isOwner && !isAdmin {
+		http.Error(w, "Permission denied", http.StatusForbidden)
+		return
+	}
+
+	filePath := filepath.Join(config.FileDir, fileName)
 	if err := os.Remove(filePath); err != nil {
 		http.Error(w, "Failed to delete file", http.StatusInternalServerError)
 		return
 	}
 
-	// Перенаправление на главную страницу после успешного удаления
+	// Обновляем информацию о файлах
+	updateFileInfos(fileName)
+
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// Функция для обновления информации о файлах после удаления
+func updateFileInfos(deletedFileName string) error {
+	filePath := filepath.Join(config.FileDir, ".fileinfo.json")
+	var fileInfos []FileInfo
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	json.Unmarshal(data, &fileInfos)
+
+	// Удаляем информацию об удаленном файле
+	var updatedInfos []FileInfo
+	for _, info := range fileInfos {
+		if info.Name != deletedFileName {
+			updatedInfos = append(updatedInfos, info)
+		}
+	}
+
+	data, err = json.Marshal(updatedInfos)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(filePath, data, 0644)
 }
 
 // File download handler
@@ -352,6 +560,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to download file", http.StatusInternalServerError)
 	}
 }
+
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:   "auth",
@@ -359,5 +568,35 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		Path:   "/",
 		MaxAge: -1,
 	})
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+func registerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Метод не разрешен", http.StatusMethodNotAllowed)
+		return
+	}
+
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+
+	if username == "" || password == "" {
+		http.Error(w, "Имя пользователя и пароль обязательны", http.StatusBadRequest)
+		return
+	}
+
+	err := userStore.AddUser(username, password)
+	if err != nil {
+		http.Error(w, "Ошибка при регистрации: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// После успешной регистрации сразу авторизуем пользователя
+	http.SetCookie(w, &http.Cookie{
+		Name:  "auth",
+		Value: username + ":" + password,
+		Path:  "/",
+	})
+
 	http.Redirect(w, r, "/", http.StatusFound)
 }

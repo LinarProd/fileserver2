@@ -1,6 +1,19 @@
 {
     "users": [
-        { "username": "admin", "password": "admin" },
-        { "username": "user", "password": "user" }
+        {
+            "username": "admin",
+            "password": "admin",
+            "is_admin": true
+        },
+        {
+            "username": "user",
+            "password": "user",
+            "is_admin": false
+        },
+        {
+            "username": "newuser",
+            "password": "123",
+            "is_admin": false
+        }
     ]
 }

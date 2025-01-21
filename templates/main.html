@@ -22,15 +22,23 @@
       <progress id="progressBar" value="0" max="100"></progress>
       <p id="progressStatus">Uploading...</p>
     </div>
+    {{if .Files}}
     <h2>Files:</h2>
+    {{else}}
+    <h2>Список файлов пуст</h2>
+    {{end}}
     <ul id="fileList">
       {{range .Files}}
       <li>
-        <a href="/download?filename={{.}}" download>{{.}}</a>
+        <span>{{.Name}}</span>
+        <span class="file-owner">(Owner: {{.Owner}})</span>
+        <a href="/download?filename={{.Name}}" download>Download</a>
+        {{if or (eq .Owner $.Username) $.IsAdmin}}
         <form method="post" action="/delete" style="display: inline">
-          <input type="hidden" name="filename" value="{{.}}" />
+          <input type="hidden" name="filename" value="{{.Name}}" />
           <button type="submit">Delete</button>
         </form>
+        {{end}}
       </li>
       {{end}}
     </ul>
@@ -38,29 +46,49 @@
       <button type="submit">Logout</button>
     </form>
     {{else}}
-    <h1>Login</h1>
-    <form method="post" action="/">
-      <label for="username">Username:</label>
-      <input type="text" id="username" name="username" required />
-      <br />
-      <label for="password">Password:</label>
-      <input type="password" id="password" name="password" required />
-      <br />
-      <button type="submit">Login</button>
-    </form>
+    <div class="auth-container">
+        <div class="login-section">
+            <h2>Вход</h2>
+            <form method="post" action="/">
+                <label for="username">Имя пользователя:</label>
+                <input type="text" id="username" name="username" required />
+                <br />
+                <label for="password">Пароль:</label>
+                <input type="password" id="password" name="password" required />
+                <br />
+                <button type="submit">Войти</button>
+            </form>
+        </div>
+
+        <div class="register-section">
+            <h2>Регистрация</h2>
+            <form method="post" action="/register">
+                <label for="reg-username">Имя пользователя:</label>
+                <input type="text" id="reg-username" name="username" required />
+                <br />
+                <label for="reg-password">Пароль:</label>
+                <input type="password" id="reg-password" name="password" required />
+                <br />
+                <button type="submit">Зарегистрироваться</button>
+            </form>
+        </div>
+    </div>
     {{end}}
     <script>
-      document.getElementById('uploadForm').addEventListener('submit', function(event) {
+// Обработчик отправки формы загрузки файла
+document.getElementById('uploadForm').addEventListener('submit', function(event) {
     event.preventDefault();
     const form = event.target;
     const fileInput = document.getElementById('file');
     const file = fileInput.files[0];
 
+    // Проверка наличия файла
     if (!file) {
         alert('Please select a file to upload.');
         return;
     }
 
+    // Получаем элементы прогресс-бара
     const progressContainer = document.getElementById('progressContainer');
     const progressBar = document.getElementById('progressBar');
     const progressStatus = document.getElementById('progressStatus');
@@ -68,6 +96,7 @@
     const xhr = new XMLHttpRequest();
     xhr.open('POST', form.action, true);
 
+    // Обработчик прогресса загрузки
     xhr.upload.onprogress = function(event) {
         if (event.lengthComputable) {
             const percentComplete = Math.round((event.loaded / event.total) * 100);
@@ -76,6 +105,7 @@
         }
     };
 
+    // Обработчик завершения загрузки
     xhr.onload = function() {
         if (xhr.status === 200) {
             alert('File uploaded successfully!');
@@ -83,56 +113,84 @@
             progressBar.value = 0;
             progressStatus.textContent = '';
             fileInput.value = ''; // Очистка поля ввода файла
-            updateFileList(); // Обновление списка файлов
+            // Обновляем страницу для отображения нового списка файлов
+            window.location.reload();
         } else {
             alert('Failed to upload file.');
         }
     };
 
+    // Обработчик ошибки загрузки
     xhr.onerror = function() {
         alert('An error occurred while uploading the file.');
     };
 
+    // Отправляем файл
     progressContainer.style.display = 'block';
     const formData = new FormData(form);
     xhr.send(formData);
 });
 
-// Функция для обновления списка файлов
+// Функция обновления списка файлов
 function updateFileList() {
     const fileList = document.querySelector('ul');
+    const fileHeader = document.querySelector('h2');
     const xhr = new XMLHttpRequest();
     xhr.open('GET', '/files', true);
+    
     xhr.onload = function() {
         if (xhr.status === 200) {
             const files = JSON.parse(xhr.responseText);
-            fileList.innerHTML = ''; // Очистка текущего списка файлов
+            fileList.innerHTML = ''; // Очистка текущего списка
+            
+            // Обновляем заголовок в зависимости от наличия файлов
+            fileHeader.textContent = files.length > 0 ? 'Files:' : 'Список файлов пуст';
+            
+            // Создаем элементы списка файлов
             files.forEach(function(file) {
                 const li = document.createElement('li');
-                const link = document.createElement('a');
-                link.href = `/download?filename=${file}`;
-                link.textContent = file;
-                link.download = true;
+                
+                // Создаем элемент для имени файла
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = file.Name;
+                
+                // Создаем элемент для владельца
+                const ownerSpan = document.createElement('span');
+                ownerSpan.className = 'file-owner';
+                ownerSpan.textContent = `(Owner: ${file.Owner})`;
+                
+                // Создаем ссылку для скачивания
+                const downloadLink = document.createElement('a');
+                downloadLink.href = `/download?filename=${file.Name}`;
+                downloadLink.textContent = 'Download';
+                downloadLink.download = true;
 
-                const form = document.createElement('form');
-                form.method = 'post';
-                form.action = '/delete';
-                form.style.display = 'inline';
+                // Добавляем элементы в li
+                li.appendChild(nameSpan);
+                li.appendChild(ownerSpan);
+                li.appendChild(downloadLink);
 
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'filename';
-                input.value = file;
+                // Добавляем кнопку удаления только если есть права
+                if (file.can_delete) {
+                    const form = document.createElement('form');
+                    form.method = 'post';
+                    form.action = '/delete';
+                    form.style.display = 'inline';
 
-                const button = document.createElement('button');
-                button.type = 'submit';
-                button.textContent = 'Delete';
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'filename';
+                    input.value = file.Name;
 
-                form.appendChild(input);
-                form.appendChild(button);
+                    const button = document.createElement('button');
+                    button.type = 'submit';
+                    button.textContent = 'Delete';
 
-                li.appendChild(link);
-                li.appendChild(form);
+                    form.appendChild(input);
+                    form.appendChild(button);
+                    li.appendChild(form);
+                }
+
                 fileList.appendChild(li);
             });
         }
