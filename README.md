@@ -38,7 +38,7 @@ FileServer - это веб-приложение, разработанное на
 
 ### Backend
 - Go 1.19+
-- PostgreSQL (опционально)
+- PostgreSQL (опционально) (Сейчас отсутствует)
 - HTML Template Engine
 - File System Operations
 - HTTP Server
@@ -52,14 +52,14 @@ FileServer - это веб-приложение, разработанное на
 - Custom Components
 
 ### База данных
-- PostgreSQL (configurable)
+- PostgreSQL (configurable) (Сейчас отсутсвует)
 - JSON Storage
 
 ## Требования
 
 ### Системные требования
 - Go 1.19 или выше
-- PostgreSQL 12+ (если используется режим PostgreSQL)
+- PostgreSQL 12+ (если используется режим PostgreSQL) (Сейчас отсутсвует)
 - 50MB свободного места на диске
 - 512MB RAM
 
