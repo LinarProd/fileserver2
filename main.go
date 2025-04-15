@@ -61,7 +61,7 @@ var (
 	userStore UserStore
 	templates = template.Must(template.New("main.html").Funcs(template.FuncMap{
 		"lower": strings.ToLower,
-	}).ParseFiles("templates/main.html"))
+	}).ParseFiles("templates/main.html", "templates/game.html"))
 	db *sql.DB
 )
 
@@ -208,6 +208,7 @@ func main() {
 	http.HandleFunc("/register", registerHandler)
 	http.HandleFunc("/openFile", openFileHandler)
 	http.HandleFunc("/saveFile", saveFileHandler)
+	http.HandleFunc("/game", gamePageHandler)
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	// Start server
@@ -709,4 +710,13 @@ func saveFileHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// New handler for the game page
+func gamePageHandler(w http.ResponseWriter, r *http.Request) {
+	// Render the game page template
+	err := templates.ExecuteTemplate(w, "game.html", nil)
+	if err != nil {
+		http.Error(w, "Failed to render game page", http.StatusInternalServerError)
+	}
 }

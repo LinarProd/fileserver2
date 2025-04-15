@@ -1,6 +1,6 @@
 {
     "server_host": "0.0.0.0",
-    "server_port": "8080",
+    "server_port": "3788",
     "file_dir": "./files",
     "user_file": "./users.json",
     "storage_mode": "json",

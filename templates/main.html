@@ -15,6 +15,11 @@
     </div>
     {{if .IsAuthorized}}
     <h1>Welcome to File Management</h1>
+    <div style="margin: 20px 0;">
+        <a href="/game">
+            <button type="button">Go to Game Page</button>
+        </a>
+    </div>
     <form
       method="post"
       action="/upload"
